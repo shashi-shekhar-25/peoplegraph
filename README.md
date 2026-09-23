@@ -46,7 +46,7 @@ Check everything works:
 | Module | What you get |
 | --- | --- |
 | **Intake** | Rows in, people out, and every fault found: duplicate people merged (same date of birth, fuzzy name), circular reporting lines broken, managers not on the roster, managers who have exited, blank divisions inferred from the manager, legacy grades and potential scales mapped, skill spellings collapsed. The resolved roster. |
-| **Skills** | Supply against demand: holders, who is leaving, backup depth (people senior enough to cover a critical role), sites, and where cover is a single expert or on one site. |
+| **Skills** | Cover against critical-role demand: holders, who is serving notice, backup depth (people senior enough to cover a critical role), sites, and where cover is a single expert or on one site. |
 | **Org design** | Median span of control, layers from the top, managers with one report, the same title across divisions. |
 | **Nine-box** | Calibrated rating against recorded potential, straight from the sheet. |
 | **Retention check-ins** | A logistic-regression model trained on your own leavers of the last 12 months, in this process. Who looks most like them now, the reasons in words, a first step for each, and a likely range of leavers next year. It refuses when there are fewer than 30 leavers or when it tests too weak on held-out people, and it never uses date of birth, gender, name or email (`ml.py`). |
