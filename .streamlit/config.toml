@@ -1,0 +1,14 @@
+# The offline claim has to be literally true, including Streamlit's own telemetry.
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
+enableStaticServing = true
+
+[theme]
+base = "light"
+primaryColor = "#14433E"
+backgroundColor = "#F7F5F1"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#16181C"

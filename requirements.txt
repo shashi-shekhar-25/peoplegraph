@@ -1,0 +1,7 @@
+# Python 3.9 or later. Pinned to the versions the test and demo run on.
+streamlit==1.50.0
+pandas==2.3.3
+duckdb==1.4.5
+networkx==3.2.1
+rapidfuzz==3.13.0
+faker==37.12.0

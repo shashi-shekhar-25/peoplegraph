@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/shashi-shekhar-25/peoplegraph/security/advisories/new
+    about: Report privately, not as an issue. See SECURITY.md.
+  - name: Succession Toolkit or Enterprise
+    url: https://peoplegraph.co.in
+    about: Questions about the paid toolkit or an enterprise deployment.
