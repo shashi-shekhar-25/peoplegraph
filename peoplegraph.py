@@ -47,6 +47,17 @@ SKILL_ALIASES = {
     "ANDA Filings": ["anda filing", "abbreviated new drug application"],
     "Computer System Validation": ["csv", "csv (21 cfr part 11)"],
     "Demand Planning": ["s&op / demand planning"],
+    # Common outside pharma: cloud, software, office and CRM names people abbreviate.
+    "AWS": ["amazon web services", "aws cloud"],
+    "Microsoft Azure": ["azure", "ms azure"],
+    "Google Cloud": ["gcp", "google cloud platform"],
+    "Kubernetes": ["k8s"],
+    "React": ["reactjs", "react.js", "react js"],
+    "Node.js": ["nodejs", "node js"],
+    "JavaScript": ["js", "java script"],
+    "Microsoft Excel": ["excel", "ms excel", "advanced excel"],
+    "Power BI": ["powerbi", "power-bi"],
+    "Salesforce": ["sfdc", "salesforce crm"],
 }
 
 # Two grading systems in one sheet. Level 0 is the top of the house.
@@ -98,6 +109,9 @@ def normalise_name(n: str) -> str:
     return " ".join(sorted(w.lower() for w in n.split() if len(w) > 1))
 
 
+SHORT_CASING: dict[str, str] = {}  # first casing seen of each skill of three characters or fewer
+
+
 def canonical_skill(raw: str, canon_list: list[str]) -> str:
     s = str(raw).strip()
     if not s:
@@ -106,6 +120,9 @@ def canonical_skill(raw: str, canon_list: list[str]) -> str:
     for canon, aliases in SKILL_ALIASES.items():
         if low == canon.lower() or low in aliases:
             return canon
+    # Short names (AWS, Aws, aws) never reach the fuzzy list: merge them on case alone.
+    if len(s) <= 3:
+        return SHORT_CASING.setdefault(low, s)
     best, score = None, 0
     for canon in canon_list:
         sc = fuzz.token_set_ratio(low, canon.lower())
@@ -155,6 +172,7 @@ class Company:
 
 
 def load(path_or_buffer) -> Company:
+    SHORT_CASING.clear()  # each file keeps its own first casing
     raw = pd.read_csv(path_or_buffer, dtype=str).fillna("")
     raw_rows = len(raw)
     raw.columns = [COLUMN_ALIASES.get(c.strip().lower(), c.strip().lower())
