@@ -11,6 +11,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+import ml
 import nlq
 import peoplegraph as pg
 import ui
@@ -25,7 +26,7 @@ st.set_page_config(page_title="PeopleGraph", layout="wide",
 st.markdown(ui.CSS, unsafe_allow_html=True)
 
 MODULES = ["Intake", "Succession", "Scenario", "Skills", "Org design", "Hiring", "Ask",
-           "Council pack"]
+           "Retention check-ins", "Council pack"]
 
 
 # ---------------------------------------------------------------- state
@@ -115,6 +116,25 @@ def needs_toolkit(what: str):
                    "Intake, Skills, Org design and the nine-box all work here. peoplegraph.co.in/toolkits"))
 
 
+def explain_box(key: str, summary: str):
+    """The summary in plain words, in the reader's language. Translation uses a local model if one runs."""
+    with st.expander("Explain in plain language, in your language"):
+        model = nlq.available_model()
+        lang = st.selectbox("Language", nlq.LANGUAGES, key=key + "-lang")
+        if not model and not lang.startswith("English"):
+            write(ui.state("Translation needs a free local AI model",
+                           "This is optional; everything else works without it. Ollama is a free app that runs "
+                           "an AI model on your own computer, so nothing leaves it. Install it from "
+                           f"{nlq.OLLAMA_DOWNLOAD}, then run “{nlq.RECOMMENDED_PULL}” (about 1 GB, fine on an "
+                           "8 GB laptop). For better Hindi and other Indian languages on a 16 GB laptop, run "
+                           "“ollama pull gemma3:4b” (about 3 GB). Then reload this page."))
+        if st.button("Explain", key=key + "-go"):
+            with st.spinner("Working on this machine…"):
+                text, how = nlq.explain(summary, lang, model)
+            audit("asked for a plain-language summary", f"{key} in {lang}")
+            write('<div class="pg-answer">%s</div><div class="pg-how">%s</div>' % (ui.esc(text), ui.esc(how)))
+
+
 # ---------------------------------------------------------------- intake
 with tabs[0]:
     st.markdown("### What the sheet got wrong")
@@ -142,6 +162,12 @@ with tabs[0]:
                 st.markdown("- " + i.detail)
             if len(group) > 15:
                 st.caption("…and %d more" % (len(group) - 15))
+
+    explain_box("intake", "The file had %d rows; after merging duplicates it holds %d people. %d faults were "
+                "found and fixed: %s. %d skill spellings were merged into one vocabulary." % (
+                    co.raw_rows, len(co.people), len(co.issues),
+                    "; ".join(f"{n} {k}" for k, n in sorted(co.counts().items(), key=lambda kv: -kv[1])),
+                    co.skill_variants_collapsed))
 
     st.markdown("###### Resolved roster")
     roster = scope.copy()
@@ -500,8 +526,58 @@ with tabs[6]:
             st.dataframe(t2, hide_index=True, use_container_width=True)
 
 
-# ---------------------------------------------------------------- roadmap
+# ---------------------------------------------------------------- retention check-ins
+@st.cache_resource(show_spinner="Learning from last year's leavers…")
+def attrition_model(_co, key: str):
+    return ml.attrition(_co)
+
+
 with tabs[7]:
+    st.markdown("### Retention check-ins")
+    write('<p class="pg-note">A model trained on this file\'s own leavers from the last 12 months, in this '
+          'process. It shows who looks most like the people who left, and why, in words. Associations, not '
+          'causes: use it to choose which conversations to have first, never for decisions about someone\'s job. '
+          'Date of birth, gender, name and email are never inputs.</p>')
+    m = attrition_model(co, source_name)
+    if m["status"] == "thin":
+        write(ui.state("Not enough history to learn from",
+                       m["reason"] + " Include everyone who left in the last 12 months, with Employment Status "
+                       "= Exited and their Exit Date."))
+    else:
+        write('<div class="pg-answer">Learned from %d leavers among %d people. Tested on people it had not '
+              'seen, it picks the actual leaver out of a random pair about %s.</div>'
+              '<div class="pg-how">associated with leaving here: %s</div>'
+              % (m["leavers"], m["people"], ml.plain_auc(m["auc"]),
+                 ui.esc("; ".join(f"{a['text']} ({a['strength']})" for a in m["associations"]))))
+        if m["status"] == "weak":
+            write(ui.state("Too weak to score individuals", m["reason"]))
+        else:
+            view = [x for x in m["scores"] if my_div is None or x["division"] == my_div]
+            high = [x for x in view if x["risk"] == "High"]
+            rng = ml.leaver_range([x["p"] for x in view])
+            write(ui.metrics([
+                (len(high), "look most like last year's leavers"),
+                (sum(x["risk"] == "Medium" for x in view), "medium priority"),
+                ("%d–%d" % (rng["p10"], rng["p90"]), "leavers expected in the next year"),
+                ("%.0f%%" % (100 * m["base_rate"]), "left in the last year"),
+            ]))
+            scope_note(len(m["scores"]) - len(view), "people")
+            show_medium = st.checkbox("Show medium priority too", key="attr-medium")
+            rows = [x for x in view if x["risk"] == "High" or (show_medium and x["risk"] == "Medium")]
+            write(ui.table([
+                ("Name", lambda r: shown(r["name"], r["emp_code"])), ("Role", "title"), ("Division", "division"),
+                ("Check-in priority", lambda r: ui.badge(r["risk"], "risk" if r["risk"] == "High" else "caution", r["risk"] == "High")),
+                ("Why, in the data", lambda r: "; ".join(r["why"]) or "—"),
+                ("A first step", lambda r: r["actions"][0] if r["actions"] else "—"),
+            ], rows[:60], "High priority = the model's estimate is at least twice the usual rate of leaving here; medium = 1.25 times."))
+            if sx is None:
+                write('<p class="pg-note">Cover risk — the chance each critical role empties with nobody '
+                      'ready — builds on this model in the Succession Toolkit.</p>')
+    explain_box("attrition", ml.summary(m))
+
+
+# ---------------------------------------------------------------- roadmap
+with tabs[8]:
     write('<div class="pg-roadmap"><h3>Council pack</h3>'
           '<p class="pg-note">One document for the talent council: every critical role, its bench, '
           'the flight-risk flags, and the tier moves made since the last cycle with the reasons '

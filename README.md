@@ -38,7 +38,7 @@ your own CSV.
 Check everything works:
 
 ```bash
-.venv/bin/python test_peoplegraph.py
+.venv/bin/python test_peoplegraph.py && .venv/bin/python test_ml.py
 ```
 
 ## What it does
@@ -49,6 +49,8 @@ Check everything works:
 | **Skills** | Supply against demand: holders, who is leaving, backup depth (people senior enough to cover a critical role), sites, and where cover is a single expert or on one site. |
 | **Org design** | Median span of control, layers from the top, managers with one report, the same title across divisions. |
 | **Nine-box** | Calibrated rating against recorded potential, straight from the sheet. |
+| **Retention check-ins** | A logistic-regression model trained on your own leavers of the last 12 months, in this process. Who looks most like them now, the reasons in words, a first step for each, and a likely range of leavers next year. It refuses when there are fewer than 30 leavers or when it tests too weak on held-out people, and it never uses date of birth, gender, name or email (`ml.py`). |
+| **In plain words** | Intake and Retention check-ins each write a short summary from their own figures. With [Ollama](https://ollama.com/download) running, it can be translated into Hindi, Tamil, Telugu, Marathi, Bengali and more on your own machine; every number is checked against the English, and the English is shown if any changed. |
 | **Ask** | Data-quality and headcount questions, through a local [Ollama](https://ollama.com) model if one is running, or a keyword fallback if not. Only `127.0.0.1` is contacted. |
 
 | Skills: where cover is thin | Org design: spans and layers |
@@ -73,16 +75,17 @@ CSV export ──► load()            peoplegraph.py   pandas: aliases, dates, 
 | File | What's in it |
 | --- | --- |
 | `peoplegraph.py` | Ingest, entity resolution, the graph, skills supply, org design, nine-box |
-| `nlq.py` | Question → intent (local model or keyword fallback) → answer |
+| `ml.py` | The retention model: frame, fit, held-out accuracy, reasons, plain-words summary |
+| `nlq.py` | Question → intent (local model or keyword fallback) → answer; translation of summaries |
 | `app.py`, `ui.py` | The Streamlit app and its design system |
 | `generate_data.py` | The synthetic sample, faults seeded on purpose |
-| `test_peoplegraph.py` | One runnable check over the pipeline |
+| `test_peoplegraph.py`, `test_ml.py` | Runnable checks: the pipeline, and the model learns a real pattern and refuses a shuffled one |
 | `DESIGN.md` | The design contract the UI follows |
 
 ## The sample dataset
 
-`data/employees_messy.csv` is 503 rows for 500 synthetic employees of a
-made-up pharma company, generated with Faker by `generate_data.py`. No real
+`data/employees_messy.csv` is 575 rows: 498 synthetic employees of a
+made-up pharma company and the 74 who left in the last year, generated with Faker by `generate_data.py`. No real
 person or employer is in it. It carries the faults a real export has, on
 purpose: three duplicate people, a reporting loop, five people reporting to a
 manager who has exited, a manager code that is not on the roster, fourteen blank divisions, a legacy
@@ -96,8 +99,8 @@ collapse to 49 skills. Regenerate it with `python generate_data.py`.
 - Streamlit's usage statistics are switched off in `.streamlit/config.toml`.
 - Fonts are served locally; the app makes no request to a CDN.
 - The only network call is to a local Ollama server on `127.0.0.1`: a check
-  for a model when the app renders, and your question if a model is running.
-  Nothing is sent anywhere else.
+  for a model, your question if a model is running, and a summary you ask to
+  translate (figures only, no names). Nothing is sent anywhere else.
 - Names are masked by default, and revealing one is logged in the session's
   audit panel.
 - `.gitignore` refuses anything in `data/` except the synthetic sample. Please

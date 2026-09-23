@@ -12,7 +12,13 @@ import urllib.error
 import urllib.request
 
 OLLAMA = "http://127.0.0.1:11434"
-PREFERRED_MODELS = ["qwen2.5:3b-instruct", "llama3.2:3b", "llama3.1:8b"]
+# Small models first: they run on an ordinary 8 GB laptop. gemma3:4b writes Indian
+# languages better if the laptop has 16 GB.
+PREFERRED_MODELS = ["gemma3:4b", "qwen2.5:3b-instruct", "qwen2.5:1.5b", "llama3.2:3b", "llama3.1:8b"]
+RECOMMENDED_PULL = "ollama pull qwen2.5:1.5b"
+OLLAMA_DOWNLOAD = "https://ollama.com/download"
+LANGUAGES = ["English", "हिन्दी (Hindi)", "मराठी (Marathi)", "தமிழ் (Tamil)", "తెలుగు (Telugu)",
+             "ಕನ್ನಡ (Kannada)", "বাংলা (Bengali)", "ગુજરાતી (Gujarati)", "മലയാളം (Malayalam)"]
 
 INTENTS = {
     "successors": "who could take over a named role or person",
@@ -81,6 +87,39 @@ def ask_model(question: str, model: str, timeout: float = 25.0) -> dict | None:
     if not isinstance(parsed, dict) or parsed.get("intent") not in INTENTS:
         return None
     return {k: (v or None) for k, v in parsed.items()}
+
+
+def _numbers(text: str) -> list[str]:
+    """Every number in a text, with Indian-script digits read as 0-9."""
+    import unicodedata
+    ascii_ = "".join(str(unicodedata.digit(ch)) if ch.isdigit() else ch for ch in text)
+    return re.findall(r"\d+(?:\.\d+)?", ascii_.replace(",", ""))
+
+
+def explain(summary: str, language: str, model: str | None, timeout: float = 90.0) -> tuple[str, str]:
+    """Put a summary PeopleGraph has already written into the reader's language.
+
+    The summary is plain English with every figure worked out by the toolkit, never by
+    the model. The model on 127.0.0.1 only translates it; if any number comes back
+    changed, the translation is thrown away and the English is shown. Returns
+    (text, how) where how says which of the two the reader is looking at.
+    """
+    if language.startswith("English") or not model:
+        return summary, "written by PeopleGraph from the figures"
+    prompt = (f"Translate the text below into simple {language} for the head of HR of an Indian company. "
+              "Keep every number exactly as written, using the digits 0-9. Do not add, remove or explain "
+              "anything. Reply with the translation only.\n\n" + summary)
+    body = json.dumps({"model": model, "prompt": prompt, "stream": False,
+                       "options": {"temperature": 0}}).encode()
+    req = urllib.request.Request(f"{OLLAMA}/api/generate", body, {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            text = json.load(r).get("response", "").strip()
+    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError, ValueError):
+        return summary, "the local model did not answer, so this is the English"
+    if not text or sorted(_numbers(text)) != sorted(_numbers(summary)):
+        return summary, "the local model changed a number, so this is the English it was given"
+    return text, f"translated by {model} on this machine; every number checked against the English"
 
 
 DIVISIONS = ["Quality", "Manufacturing", "R&D", "Regulatory", "Clinical",

@@ -1,12 +1,14 @@
 """Synthetic pharma HRIS export, traps included.
 
-Produces data/employees_messy.csv: ~500 people, eight divisions, with the
+Produces data/employees_messy.csv: ~500 people plus last year's leavers, eight divisions, with the
 mess a real export carries (duplicate rehires, a reorg cycle, exited
-managers, five spellings of one skill, two grading systems, blank divisions).
+managers, five spellings of one skill, two grading systems, blank divisions),
+plus last year's leavers so the attrition model has history to learn from.
 
 All names and structures are Faker output. Nothing from any employer.
 """
 import csv
+import math
 import random
 from datetime import date, timedelta
 
@@ -291,8 +293,63 @@ def build():
     return rows, traps
 
 
+def add_leavers(rows, n=72):
+    """People who left in the last twelve months, as an HRIS exports them: status
+    Exited with an exit date.
+
+    The pattern is seeded on purpose, and the guides say so: no promotion for three
+    years, "Well placed" potential, the first two years in the company and a sales
+    role each raise the odds of leaving. (Nobody in their first two years can have
+    gone three without a promotion, so that condition carries the larger weight.)
+    Everything else is drawn the way make_row
+    draws the people who stayed, counted back from the exit date, so the only
+    difference a model can find is the one planted here.
+
+    Its own random stream: every row build() makes stays exactly as it was.
+    """
+    lr = random.Random(SEED + 1)
+    lf = Faker("en_IN")
+    lf.seed_instance(SEED + 1)
+    # Copy only clean rows, so the planted faults stay the ones build() planted.
+    gone = {r["Employee Code"] for r in rows if r["Employment Status"] == "Exited"}
+    pool = [r for r in rows if r["Employment Status"] == "Active" and r["Division"]
+            and r["Manager Employee Code"] not in gone and r["Band"] in
+            ("M3", "E2", "E1", "Manager-II", "Executive-I", "Executive-II")
+            and not r["Job Title"].startswith(("Head of", "Plant Head", "Qualified Person", "Chief"))
+            and not r["Job Title"].endswith("Lead")]
+    out = []
+    while len(out) < n:
+        like = lr.choice(pool)
+        left = TODAY - timedelta(days=lr.randint(5, 360))
+        joined = left - timedelta(days=lr.randint(180, 5200))
+        in_role = left - timedelta(days=lr.randint(90, min(2600, (left - joined).days or 90)))
+        promoted = in_role if lr.random() < 0.7 else joined
+        potential = POTENTIAL[lr.choices([0, 1, 2], weights=[52, 34, 14])[0]]
+        z = (-6.0 + 3.0 * ((left - promoted).days > 3 * 365) + 2.2 * (potential == "Well placed")
+             + 4.2 * ((left - joined).days < 2 * 365) + 2.0 * (like["Division"] == "Commercial"))
+        if lr.random() > 1 / (1 + math.exp(-z)):
+            continue
+        name = lf.name()
+        out.append({**like,
+                    "Employee Code": f"EMP3{len(out):04d}",
+                    "Employee Name": name,
+                    "Date of Birth": d(left - timedelta(days=lr.randint(24 * 365, 50 * 365)), lr.randint(0, 3)),
+                    "Date of Joining": d(joined, lr.randint(0, 3)),
+                    "Date In Current Role": d(in_role, lr.randint(0, 3)),
+                    "Last Promotion Date": d(promoted, lr.randint(0, 3)),
+                    "Employment Status": "Exited",
+                    "Exit Date": d(left, 0),
+                    "Last Rating": lr.choices(RATINGS, weights=[2, 8, 45, 32, 13])[0],
+                    "Potential": potential,
+                    "Email": ".".join(name.lower().split()[:2]) + "@example-pharma.test"})
+    return out
+
+
 def main():
     rows, traps = build()
+    leavers = add_leavers(rows)
+    rows += leavers
+    traps.append(f"{len(leavers)} leavers in the last twelve months (seeded attrition pattern)")
     path = "data/employees_messy.csv"
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
